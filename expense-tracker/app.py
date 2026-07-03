@@ -1,11 +1,15 @@
 """Expense tracker web app.
 
 Upload a receipt (photo or PDF) -> Claude extracts the details ->
-a row is added to your Smartsheet with the receipt file attached.
+a row is added to your expense sheet with the receipt file stored alongside.
+
+Storage backends (picked automatically from configuration):
+  - Google Sheets + Drive (free) when GOOGLE_SERVICE_ACCOUNT_JSON is set
+  - Smartsheet when SMARTSHEET_ACCESS_TOKEN is set
 
 Works locally (python app.py) or deployed to a host like Render (gunicorn app:app).
 If APP_PASSWORD is set, the app asks for it once per device and remembers you.
-The expenses sheet is created in Smartsheet automatically on the first upload.
+The sheet (and Drive folder) are created automatically on the first upload.
 """
 
 import csv
@@ -20,7 +24,6 @@ from dotenv import load_dotenv
 from flask import Flask, redirect, render_template, request, send_file, session, url_for
 
 from extractor import extract_receipt, IMAGE_MEDIA_TYPES
-from smartsheet_client import SmartsheetClient, find_or_create_sheet
 
 load_dotenv()
 
@@ -33,18 +36,32 @@ app.secret_key = hashlib.sha256(f"expense-tracker:{APP_PASSWORD}".encode()).dige
 
 ALLOWED_EXTENSIONS = set(IMAGE_MEDIA_TYPES) | {".pdf"}
 
-_sheet_id = None  # cached after first lookup
+_backend = None  # cached after first use
 
 
-def get_sheet() -> SmartsheetClient:
-    """Return a client for the expenses sheet, creating the sheet if needed."""
-    global _sheet_id
-    token = os.environ["SMARTSHEET_ACCESS_TOKEN"]
-    if _sheet_id is None:
-        _sheet_id = os.environ.get("SMARTSHEET_SHEET_ID") or find_or_create_sheet(
-            token, os.environ.get("SHEET_NAME", "Business Expenses")
-        )
-    return SmartsheetClient(token, _sheet_id)
+def get_backend():
+    """Pick the storage backend from what's configured.
+
+    Google Sheets + Drive (free) when GOOGLE_SERVICE_ACCOUNT_JSON is set,
+    otherwise Smartsheet when SMARTSHEET_ACCESS_TOKEN is set.
+    """
+    global _backend
+    if _backend is None:
+        if os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"):
+            from google_client import GoogleExpenseBackend
+
+            _backend = GoogleExpenseBackend()
+        elif os.environ.get("SMARTSHEET_ACCESS_TOKEN"):
+            from smartsheet_client import SmartsheetClient, find_or_create_sheet
+
+            token = os.environ["SMARTSHEET_ACCESS_TOKEN"]
+            sheet_id = os.environ.get("SMARTSHEET_SHEET_ID") or find_or_create_sheet(
+                token, os.environ.get("SHEET_NAME", "Business Expenses")
+            )
+            _backend = SmartsheetClient(token, sheet_id)
+        else:
+            raise KeyError("GOOGLE_SERVICE_ACCOUNT_JSON (or SMARTSHEET_ACCESS_TOKEN)")
+    return _backend
 
 
 def mime_type_for(filename: str) -> str:
@@ -100,11 +117,9 @@ def upload():
         return render_template("index.html", error=f"Could not read the receipt: {exc}")
 
     try:
-        sheet = get_sheet()
-        row_id = sheet.add_expense_row(expense)
-        sheet.attach_receipt(row_id, file.filename, file_bytes, mime_type_for(file.filename))
-        sheet.sort_by_date()  # keep the sheet ordered by receipt date, oldest first
-        sheet_url = sheet.sheet_url()
+        backend = get_backend()
+        backend.save_expense(expense, file.filename, file_bytes, mime_type_for(file.filename))
+        sheet_url = backend.sheet_url()
     except KeyError as exc:
         return render_template(
             "index.html",
@@ -114,7 +129,7 @@ def upload():
     except Exception as exc:
         return render_template(
             "index.html",
-            error=f"Extracted the receipt but could not save to Smartsheet: {exc}",
+            error=f"Extracted the receipt but could not save it to your expense sheet: {exc}",
             expense=expense,
         )
 
@@ -147,8 +162,8 @@ def export_download():
     date_to = request.args.get("to") or None
 
     try:
-        sheet = get_sheet()
-        expenses = sheet.get_expenses(date_from, date_to)
+        backend = get_backend()
+        expenses = backend.get_expenses(date_from, date_to)
 
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -171,7 +186,7 @@ def export_download():
             for e in expenses:
                 v = e["values"]
                 for att in e["attachments"]:
-                    original_name, content = sheet.download_attachment(att["id"])
+                    original_name, content = backend.download_attachment(att["id"])
                     ext = os.path.splitext(original_name)[1] or ""
                     base = f"{v.get('Date') or 'no-date'}_{_safe_name(str(v.get('Vendor') or 'unknown'))}"
                     name, n = f"receipts/{base}{ext}", 2

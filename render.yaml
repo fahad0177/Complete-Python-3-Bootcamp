@@ -9,7 +9,9 @@ services:
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
-      - key: SMARTSHEET_ACCESS_TOKEN
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: SHARE_WITH_EMAIL
         sync: false
       - key: APP_PASSWORD
         sync: false

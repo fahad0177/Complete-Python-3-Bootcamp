@@ -60,6 +60,12 @@ class SmartsheetClient:
             self._column_ids = {c["title"]: c["id"] for c in resp.json()["data"]}
         return self._column_ids
 
+    def save_expense(self, expense: dict, filename: str, file_bytes: bytes, mime_type: str):
+        """Add the row, attach the receipt to it, and keep the sheet date-sorted."""
+        row_id = self.add_expense_row(expense)
+        self.attach_receipt(row_id, filename, file_bytes, mime_type)
+        self.sort_by_date()
+
     def add_expense_row(self, expense: dict) -> int:
         """Add one expense as a new row at the bottom of the sheet. Returns the row id."""
         cols = self._columns()

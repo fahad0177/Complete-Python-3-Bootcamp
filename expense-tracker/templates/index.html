@@ -59,12 +59,12 @@
 <body>
   <div class="card">
     <h1>&#129534; Expense Tracker</h1>
-    <p class="sub">Upload a receipt photo or PDF. The details are extracted automatically and saved to your Smartsheet with the receipt attached.</p>
+    <p class="sub">Upload a receipt photo or PDF. The details are extracted automatically and saved to your expense sheet with the receipt stored alongside.</p>
 
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
 
     {% if expense and not error %}
-      <div class="success">Saved to Smartsheet{% if sheet_url %} &mdash; <a href="{{ sheet_url }}" target="_blank">open sheet</a>{% endif %}</div>
+      <div class="success">Saved{% if sheet_url %} &mdash; <a href="{{ sheet_url }}" target="_blank">open your expense sheet</a>{% endif %}</div>
     {% endif %}
 
     {% if expense %}
