@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Download receipts</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#2563eb">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f2f4f7; color: #1a202c;
+      display: flex; justify-content: center; padding: 2rem 1rem; min-height: 100vh;
+    }
+    .card {
+      background: #fff; border-radius: 12px; padding: 2rem;
+      max-width: 480px; width: 100%;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08); height: fit-content;
+    }
+    h1 { font-size: 1.3rem; margin-bottom: .5rem; }
+    p.sub { color: #64748b; font-size: .9rem; margin-bottom: 1.5rem; }
+    label { display: block; font-size: .85rem; color: #64748b; margin-bottom: .3rem; }
+    input[type=date] {
+      width: 100%; padding: .7rem; font-size: 1rem;
+      border: 1px solid #cbd5e1; border-radius: 8px; margin-bottom: 1rem; background: #fff;
+    }
+    button {
+      width: 100%; padding: .8rem; background: #2563eb; color: #fff;
+      border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer;
+    }
+    .error {
+      background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c;
+      border-radius: 8px; padding: .75rem 1rem; font-size: .9rem; margin-bottom: 1.25rem;
+    }
+    .back { display: inline-block; margin-bottom: 1rem; font-size: .9rem; color: #2563eb; text-decoration: none; }
+    .note { margin-top: 1rem; font-size: .8rem; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <a class="back" href="/">&larr; Back to upload</a>
+    <h1>&#128230; Download receipts</h1>
+    <p class="sub">Get one ZIP file with every receipt in the date range (named by date and vendor) plus a CSV summary of the expenses — ready to hand to your accountant.</p>
+
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+    <form action="/export/download" method="get">
+      <label for="from">From</label>
+      <input type="date" id="from" name="from" value="{{ default_from }}">
+      <label for="to">To</label>
+      <input type="date" id="to" name="to" value="{{ default_to }}">
+      <button type="submit">Download ZIP</button>
+    </form>
+
+    <p class="note">Dates default to the current Australian financial year (1 July onward). Preparing the ZIP can take a little while if there are many receipts.</p>
+  </div>
+</body>
+</html>

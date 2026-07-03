@@ -6,6 +6,8 @@ Snap or upload a receipt (photo or PDF) from your phone and this app will:
 2. **Extract the details** — date, vendor, category (Food / Accommodation / Travel / etc.), description, total amount, and GST (Australian rules: GST = total ÷ 11 when included but not itemised)
 3. **Add a row to your Smartsheet** with all those details
 4. **Attach the original receipt file to that row**, so the receipt is stored right next to its data
+5. **Keep the sheet sorted by receipt date** (oldest first) — upload receipts in any order and they land in the right place
+6. **Bundle everything up for tax time** — the "Download receipts" page gives you one ZIP with every receipt in a date range (named `2026-06-15_Officeworks.pdf` style) plus a CSV summary, defaulting to the current Australian financial year
 
 The expenses sheet ("Business Expenses") is created in your Smartsheet account **automatically** on the first upload — no manual sheet setup needed. The app is password-protected and installs on your phone's home screen like a normal app.
 

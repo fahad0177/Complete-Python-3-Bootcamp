@@ -101,6 +101,64 @@ class SmartsheetClient:
         )
         resp.raise_for_status()
 
+    def sort_by_date(self):
+        """Re-sort the whole sheet by the Date column, oldest at the top."""
+        cols = self._columns()
+        if "Date" not in cols:
+            return
+        resp = requests.post(
+            f"{API_BASE}/sheets/{self.sheet_id}/sort",
+            headers={**self.headers, "Content-Type": "application/json"},
+            json={"sortCriteria": [{"columnId": cols["Date"], "direction": "ASCENDING"}]},
+            timeout=60,
+        )
+        resp.raise_for_status()
+
+    def get_expenses(self, date_from: str = None, date_to: str = None) -> list:
+        """Return rows (values + attachment info) with dates inside the range, oldest first.
+
+        Dates are ISO strings (YYYY-MM-DD). Rows with no date are included only
+        when no range is given.
+        """
+        resp = requests.get(
+            f"{API_BASE}/sheets/{self.sheet_id}",
+            headers=self.headers,
+            params={"include": "attachments", "pageSize": 10000},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        titles_by_id = {col_id: title for title, col_id in self._columns().items()}
+
+        expenses = []
+        for row in resp.json().get("rows", []):
+            values = {
+                titles_by_id[c["columnId"]]: c.get("value")
+                for c in row.get("cells", [])
+                if c.get("columnId") in titles_by_id
+            }
+            row_date = values.get("Date")
+            if date_from and (not row_date or str(row_date) < date_from):
+                continue
+            if date_to and (not row_date or str(row_date) > date_to):
+                continue
+            expenses.append({"values": values, "attachments": row.get("attachments", [])})
+
+        expenses.sort(key=lambda e: str(e["values"].get("Date") or ""))
+        return expenses
+
+    def download_attachment(self, attachment_id: int) -> tuple:
+        """Fetch one attachment's original filename and file bytes."""
+        resp = requests.get(
+            f"{API_BASE}/sheets/{self.sheet_id}/attachments/{attachment_id}",
+            headers=self.headers,
+            timeout=30,
+        )
+        resp.raise_for_status()
+        info = resp.json()
+        file_resp = requests.get(info["url"], timeout=120)  # temporary signed URL
+        file_resp.raise_for_status()
+        return info.get("name", f"receipt-{attachment_id}"), file_resp.content
+
     def sheet_url(self) -> str:
         resp = requests.get(
             f"{API_BASE}/sheets/{self.sheet_id}",
