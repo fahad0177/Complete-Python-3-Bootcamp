@@ -2,10 +2,43 @@
 
 import requests
 
+from extractor import CATEGORIES
+
 API_BASE = "https://api.smartsheet.com/2.0"
 
-# Column titles the sheet must have (setup_sheet.py creates them).
-COLUMNS = ["Vendor", "Date", "Category", "Description", "Amount", "GST", "Currency", "Notes"]
+# Columns the expenses sheet is created with (and that add_expense_row fills in).
+SHEET_COLUMNS = [
+    {"title": "Vendor", "type": "TEXT_NUMBER", "primary": True},
+    {"title": "Date", "type": "DATE"},
+    {"title": "Category", "type": "PICKLIST", "options": CATEGORIES},
+    {"title": "Description", "type": "TEXT_NUMBER"},
+    {"title": "Amount", "type": "TEXT_NUMBER"},
+    {"title": "GST", "type": "TEXT_NUMBER"},
+    {"title": "Currency", "type": "TEXT_NUMBER"},
+    {"title": "Notes", "type": "TEXT_NUMBER"},
+]
+
+
+def find_or_create_sheet(access_token: str, name: str = "Business Expenses") -> int:
+    """Return the id of the sheet with this name, creating it if it doesn't exist yet."""
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    resp = requests.get(
+        f"{API_BASE}/sheets", headers=headers, params={"includeAll": "true"}, timeout=30
+    )
+    resp.raise_for_status()
+    for sheet in resp.json().get("data", []):
+        if sheet["name"] == name:
+            return sheet["id"]
+
+    resp = requests.post(
+        f"{API_BASE}/sheets",
+        headers={**headers, "Content-Type": "application/json"},
+        json={"name": name, "columns": SHEET_COLUMNS},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()["result"]["id"]
 
 
 class SmartsheetClient:
