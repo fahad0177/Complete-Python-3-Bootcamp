@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Expense Tracker</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f2f4f7; color: #1a202c;
+      display: flex; justify-content: center; padding: 2rem 1rem;
+      min-height: 100vh;
+    }
+    .card {
+      background: #fff; border-radius: 12px; padding: 2rem;
+      max-width: 480px; width: 100%;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      height: fit-content;
+    }
+    h1 { font-size: 1.4rem; margin-bottom: .5rem; }
+    p.sub { color: #64748b; font-size: .9rem; margin-bottom: 1.5rem; }
+    .dropzone {
+      border: 2px dashed #cbd5e1; border-radius: 10px;
+      padding: 2rem 1rem; text-align: center; cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    .dropzone:hover, .dropzone.drag { border-color: #2563eb; background: #eff6ff; }
+    .dropzone span { color: #64748b; font-size: .95rem; }
+    #filename { margin-top: .75rem; font-size: .85rem; color: #2563eb; font-weight: 600; }
+    button {
+      margin-top: 1.25rem; width: 100%; padding: .8rem;
+      background: #2563eb; color: #fff; border: none; border-radius: 8px;
+      font-size: 1rem; font-weight: 600; cursor: pointer;
+    }
+    button:disabled { background: #93c5fd; cursor: wait; }
+    .error {
+      background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c;
+      border-radius: 8px; padding: .75rem 1rem; font-size: .9rem; margin-bottom: 1.25rem;
+    }
+    .success {
+      background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534;
+      border-radius: 8px; padding: .75rem 1rem; font-size: .9rem; margin-bottom: 1.25rem;
+    }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 1.25rem; font-size: .9rem; }
+    td { padding: .45rem .25rem; border-bottom: 1px solid #f1f5f9; }
+    td:first-child { color: #64748b; width: 38%; }
+    a { color: #2563eb; }
+    .spinner-note { display: none; margin-top: .75rem; text-align: center; color: #64748b; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>&#129534; Expense Tracker</h1>
+    <p class="sub">Upload a receipt photo or PDF. The details are extracted automatically and saved to your Smartsheet with the receipt attached.</p>
+
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+    {% if expense and not error %}
+      <div class="success">Saved to Smartsheet{% if sheet_url %} &mdash; <a href="{{ sheet_url }}" target="_blank">open sheet</a>{% endif %}</div>
+    {% endif %}
+
+    {% if expense %}
+      <table>
+        <tr><td>Date</td><td>{{ expense.date or "—" }}</td></tr>
+        <tr><td>Vendor</td><td>{{ expense.vendor or "—" }}</td></tr>
+        <tr><td>Category</td><td>{{ expense.category }}</td></tr>
+        <tr><td>Description</td><td>{{ expense.description }}</td></tr>
+        <tr><td>Amount</td><td>{{ expense.currency }} {{ "%.2f"|format(expense.total_amount) if expense.total_amount is not none else "—" }}</td></tr>
+        <tr><td>GST</td><td>{{ "%.2f"|format(expense.gst_amount) if expense.gst_amount is not none else "—" }}</td></tr>
+        {% if expense.confidence_notes %}<tr><td>Notes</td><td>{{ expense.confidence_notes }}</td></tr>{% endif %}
+      </table>
+    {% endif %}
+
+    <form id="form" action="/upload" method="post" enctype="multipart/form-data">
+      <div class="dropzone" id="dropzone">
+        <span>Tap to choose a file, or drag &amp; drop<br>(JPG, PNG, PDF &mdash; max 20&nbsp;MB)</span>
+        <div id="filename"></div>
+        <input type="file" id="receipt" name="receipt" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,image/*" hidden>
+      </div>
+      <button type="submit" id="submit">Upload receipt</button>
+      <div class="spinner-note" id="note">Reading the receipt&hellip; this takes a few seconds.</div>
+    </form>
+  </div>
+
+  <script>
+    const dz = document.getElementById("dropzone");
+    const input = document.getElementById("receipt");
+    const form = document.getElementById("form");
+    const btn = document.getElementById("submit");
+    const note = document.getElementById("note");
+
+    dz.addEventListener("click", () => input.click());
+    input.addEventListener("change", () => {
+      document.getElementById("filename").textContent = input.files[0] ? input.files[0].name : "";
+    });
+    dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("drag"); });
+    dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
+    dz.addEventListener("drop", e => {
+      e.preventDefault(); dz.classList.remove("drag");
+      if (e.dataTransfer.files.length) {
+        input.files = e.dataTransfer.files;
+        input.dispatchEvent(new Event("change"));
+      }
+    });
+    form.addEventListener("submit", () => {
+      btn.disabled = true;
+      btn.textContent = "Working…";
+      note.style.display = "block";
+    });
+  </script>
+</body>
+</html>
