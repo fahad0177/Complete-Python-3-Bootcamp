@@ -26,32 +26,43 @@ Sign up at [console.anthropic.com](https://console.anthropic.com) → *Billing* 
 
 ### Step 2 — Google service account (~8 min, all clicking)
 
-This gives the app its own "robot" Google account that owns the sheet and shares it with you.
+This gives the app its own "robot" Google account (with its own email address) that fills in your sheet.
 
 1. Go to [console.cloud.google.com](https://console.cloud.google.com) and sign in with your Gmail.
 2. Top bar → project dropdown → **New Project** → name it `expense-tracker` → *Create* (then make sure it's selected).
 3. In the top search bar, type **"Google Sheets API"** → open it → **Enable**.
-4. Search **"Google Drive API"** → open it → **Enable**.
-5. Menu (☰) → **IAM & Admin** → **Service Accounts** → **Create service account** → name it `expense-bot` → *Create and continue* → skip the optional role/access screens → *Done*.
-6. Click the new service account → **Keys** tab → **Add key** → **Create new key** → **JSON** → *Create*. A `.json` file downloads.
-7. Open that file in any text editor and copy **all** of its contents — that whole blob is your `GOOGLE_SERVICE_ACCOUNT_JSON` value.
+4. Search **"Google Drive API"** → open it → **Enable**. *(Both must be enabled.)*
+5. Menu (☰) → **IAM & Admin** → **Service Accounts** → **Create service account** → name it `expense-bot` → *Create and continue* → skip the optional screens → *Done*.
+6. Click the new service account. Copy its **email address** (looks like `expense-bot@expense-tracker-xxxx.iam.gserviceaccount.com`) — you'll need it in step 3.
+7. Go to the **Keys** tab → **Add key** → **Create new key** → **JSON** → *Create*. A `.json` file downloads.
+8. Open that file in any text editor and copy **all** of its contents — that whole blob is your `GOOGLE_SERVICE_ACCOUNT_JSON` value.
 
-### Step 3 — Deploy free on Render (~5 min)
+### Step 3 — Make your sheet and folder, share with the robot (~3 min)
+
+A service account can't create files in a personal Google Drive, so you make them (they'll live in *your* Drive) and share them with the robot:
+
+1. Go to [sheets.google.com](https://sheets.google.com) → **Blank spreadsheet** → name it "Business Expenses".
+2. Click **Share** (top right) → paste the robot's **email** from step 2.6 → set it to **Editor** → **Send** (untick "Notify people" if you like).
+3. Copy the sheet's ID from its URL — the long code between `/d/` and `/edit`:
+   `docs.google.com/spreadsheets/d/`**`THIS_PART`**`/edit`
+4. Go to [drive.google.com](https://drive.google.com) → **New → Folder** → name it "Receipts" → open it → **Share** → paste the robot's email → **Editor** → **Send**.
+5. Copy the folder's ID from its URL: `drive.google.com/drive/folders/`**`THIS_PART`**
+
+### Step 4 — Deploy free on Render (~5 min)
 
 1. Go to [render.com](https://render.com) → sign up with **"Sign in with GitHub"**.
 2. **New +** → **Blueprint** → pick this repository and the branch containing the app.
-3. Fill in the four values Render asks for:
+3. Fill in the five values Render asks for:
    - `ANTHROPIC_API_KEY` — from step 1
-   - `GOOGLE_SERVICE_ACCOUNT_JSON` — the whole JSON blob from step 2
-   - `SHARE_WITH_EMAIL` — **your own Gmail address** (the sheet and receipts folder get shared with it)
+   - `GOOGLE_SERVICE_ACCOUNT_JSON` — the whole JSON blob from step 2.8
+   - `GOOGLE_SHEET_ID` — the sheet ID from step 3.3
+   - `GOOGLE_FOLDER_ID` — the folder ID from step 3.5
    - `APP_PASSWORD` — invent a password for the app
 4. **Apply** → wait ~3 minutes → you get a link like `https://expense-tracker-xxxx.onrender.com`.
 
-### Step 4 — Phone (~1 min)
+### Step 5 — Phone (~1 min)
 
-Open the link on your phone, sign in, then **iPhone**: Share → *Add to Home Screen* / **Android**: menu (⋮) → *Add to Home screen*.
-
-After your first upload, look in [sheets.google.com](https://sheets.google.com) under **Shared with me** — "Business Expenses" will be there, along with a "Business Expense Receipts" folder in Drive.
+Open the link on your phone, sign in, then **iPhone**: Share → *Add to Home Screen* / **Android**: menu (⋮) → *Add to Home screen*. Your uploads now land straight in the "Business Expenses" sheet and "Receipts" folder in your own Google account.
 
 > **Free-tier note:** Render's free plan puts the app to sleep after ~15 idle minutes; the first upload after a break takes ~1 minute to wake. Their $7/month plan removes this — optional.
 

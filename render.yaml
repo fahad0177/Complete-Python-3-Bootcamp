@@ -11,7 +11,9 @@ services:
         sync: false
       - key: GOOGLE_SERVICE_ACCOUNT_JSON
         sync: false
-      - key: SHARE_WITH_EMAIL
+      - key: GOOGLE_SHEET_ID
+        sync: false
+      - key: GOOGLE_FOLDER_ID
         sync: false
       - key: APP_PASSWORD
         sync: false

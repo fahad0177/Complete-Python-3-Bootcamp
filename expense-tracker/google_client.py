@@ -1,11 +1,16 @@
 """Free storage backend: expenses in a Google Sheet, receipts in a Google Drive folder.
 
 Auth is a Google service account (JSON key in GOOGLE_SERVICE_ACCOUNT_JSON).
-On first use this creates:
-  - a spreadsheet named "Business Expenses" (one row per expense, with a link
-    to its receipt), and
-  - a Drive folder named "Business Expense Receipts" holding the receipt files,
-and shares both with SHARE_WITH_EMAIL so they show up in your own Google account.
+
+Recommended setup (avoids Drive permission/quota limits on personal Gmail):
+  You create an empty Google Sheet and a Drive folder, share both with the
+  service account's client_email as Editor, and provide their IDs as
+  GOOGLE_SHEET_ID and GOOGLE_FOLDER_ID. The app fills them in — it never has to
+  create files in the service account's own Drive.
+
+Fallback (only works on Google Workspace / where the service account may own
+files): if the IDs are not set, the app tries to create the sheet and folder
+itself and share them with SHARE_WITH_EMAIL.
 """
 
 import io
@@ -24,8 +29,6 @@ SCOPES = [
 
 HEADER = ["Date", "Vendor", "Category", "Description", "Amount", "GST", "Currency", "Notes", "Receipt"]
 
-TAB_NAME = "Expenses"
-
 
 class GoogleExpenseBackend:
     def __init__(self):
@@ -36,21 +39,19 @@ class GoogleExpenseBackend:
         self.share_with = os.environ.get("SHARE_WITH_EMAIL", "")
         self.sheet_name = os.environ.get("SHEET_NAME", "Business Expenses")
         self.folder_name = os.environ.get("FOLDER_NAME", "Business Expense Receipts")
-        self._spreadsheet_id = None
-        self._grid_id = None
-        self._folder_id = None
+
+        # Preferred: user-created, service-account-shared sheet + folder.
+        self._spreadsheet_id = os.environ.get("GOOGLE_SHEET_ID") or None
+        self._folder_id = os.environ.get("GOOGLE_FOLDER_ID") or None
+
+        self._tab = None       # first tab's title, discovered at setup
+        self._grid_id = None   # first tab's numeric id
         self._url = None
+        self._ready = False
 
     # ---------- setup ----------
 
-    def _find_file(self, name: str, mime_type: str):
-        query = f"name = '{name}' and mimeType = '{mime_type}' and trashed = false"
-        result = self.drive.files().list(q=query, fields="files(id, webViewLink)").execute()
-        files = result.get("files", [])
-        return files[0] if files else None
-
     def _share(self, file_id: str):
-        """Give the owner's personal Google account access (as editor)."""
         if not self.share_with:
             return
         self.drive.permissions().create(
@@ -59,43 +60,68 @@ class GoogleExpenseBackend:
             sendNotificationEmail=False,
         ).execute()
 
+    def _find_file(self, name: str, mime_type: str):
+        query = f"name = '{name}' and mimeType = '{mime_type}' and trashed = false"
+        result = self.drive.files().list(q=query, fields="files(id, webViewLink)").execute()
+        files = result.get("files", [])
+        return files[0] if files else None
+
     def _create_spreadsheet(self) -> str:
         ss = (
             self.sheets.spreadsheets()
             .create(
-                body={
-                    "properties": {"title": self.sheet_name},
-                    "sheets": [{"properties": {"title": TAB_NAME}}],
-                },
-                fields="spreadsheetId,spreadsheetUrl,sheets(properties(sheetId))",
+                body={"properties": {"title": self.sheet_name}},
+                fields="spreadsheetId,spreadsheetUrl,sheets(properties(sheetId,title))",
             )
             .execute()
         )
-        spreadsheet_id = ss["spreadsheetId"]
         self._url = ss["spreadsheetUrl"]
-        grid_id = ss["sheets"][0]["properties"]["sheetId"]
+        self._share(ss["spreadsheetId"])
+        return ss["spreadsheetId"]
 
-        # header row: write values, bold it, freeze it
+    def _create_folder(self) -> str:
+        created = (
+            self.drive.files()
+            .create(
+                body={"name": self.folder_name, "mimeType": "application/vnd.google-apps.folder"},
+                fields="id",
+            )
+            .execute()
+        )
+        self._share(created["id"])
+        return created["id"]
+
+    def _ensure_header(self):
+        """Make sure the first tab has our header row (bold + frozen)."""
+        existing = (
+            self.sheets.spreadsheets()
+            .values()
+            .get(spreadsheetId=self._spreadsheet_id, range=f"{self._tab}!A1:I1")
+            .execute()
+            .get("values", [])
+        )
+        if existing and existing[0]:
+            return  # header already present
         self.sheets.spreadsheets().values().update(
-            spreadsheetId=spreadsheet_id,
-            range=f"{TAB_NAME}!A1",
+            spreadsheetId=self._spreadsheet_id,
+            range=f"{self._tab}!A1",
             valueInputOption="RAW",
             body={"values": [HEADER]},
         ).execute()
         self.sheets.spreadsheets().batchUpdate(
-            spreadsheetId=spreadsheet_id,
+            spreadsheetId=self._spreadsheet_id,
             body={
                 "requests": [
                     {
                         "repeatCell": {
-                            "range": {"sheetId": grid_id, "startRowIndex": 0, "endRowIndex": 1},
+                            "range": {"sheetId": self._grid_id, "startRowIndex": 0, "endRowIndex": 1},
                             "cell": {"userEnteredFormat": {"textFormat": {"bold": True}}},
                             "fields": "userEnteredFormat.textFormat.bold",
                         }
                     },
                     {
                         "updateSheetProperties": {
-                            "properties": {"sheetId": grid_id, "gridProperties": {"frozenRowCount": 1}},
+                            "properties": {"sheetId": self._grid_id, "gridProperties": {"frozenRowCount": 1}},
                             "fields": "gridProperties.frozenRowCount",
                         }
                     },
@@ -103,48 +129,32 @@ class GoogleExpenseBackend:
             },
         ).execute()
 
-        self._share(spreadsheet_id)
-        return spreadsheet_id
-
     def _ensure_setup(self):
-        if self._spreadsheet_id and self._folder_id:
+        if self._ready:
             return
 
-        existing = self._find_file(self.sheet_name, "application/vnd.google-apps.spreadsheet")
-        if existing:
-            self._spreadsheet_id = existing["id"]
-            self._url = existing.get("webViewLink", "")
-        else:
-            self._spreadsheet_id = self._create_spreadsheet()
+        # Spreadsheet: use the provided one, or (fallback) find/create by name.
+        if not self._spreadsheet_id:
+            existing = self._find_file(self.sheet_name, "application/vnd.google-apps.spreadsheet")
+            self._spreadsheet_id = existing["id"] if existing else self._create_spreadsheet()
 
-        if self._grid_id is None:
-            meta = (
-                self.sheets.spreadsheets()
-                .get(spreadsheetId=self._spreadsheet_id, fields="sheets(properties(sheetId,title)),spreadsheetUrl")
-                .execute()
-            )
-            self._url = meta.get("spreadsheetUrl", self._url)
-            props = meta["sheets"][0]["properties"]
-            for s in meta["sheets"]:
-                if s["properties"]["title"] == TAB_NAME:
-                    props = s["properties"]
-                    break
-            self._grid_id = props["sheetId"]
+        meta = (
+            self.sheets.spreadsheets()
+            .get(spreadsheetId=self._spreadsheet_id, fields="spreadsheetUrl,sheets(properties(sheetId,title))")
+            .execute()
+        )
+        self._url = meta.get("spreadsheetUrl", self._url)
+        first_tab = meta["sheets"][0]["properties"]
+        self._tab = first_tab["title"]
+        self._grid_id = first_tab["sheetId"]
+        self._ensure_header()
 
-        folder = self._find_file(self.folder_name, "application/vnd.google-apps.folder")
-        if folder:
-            self._folder_id = folder["id"]
-        else:
-            created = (
-                self.drive.files()
-                .create(
-                    body={"name": self.folder_name, "mimeType": "application/vnd.google-apps.folder"},
-                    fields="id",
-                )
-                .execute()
-            )
-            self._folder_id = created["id"]
-            self._share(self._folder_id)
+        # Folder: use the provided one, or (fallback) find/create by name.
+        if not self._folder_id:
+            folder = self._find_file(self.folder_name, "application/vnd.google-apps.folder")
+            self._folder_id = folder["id"] if folder else self._create_folder()
+
+        self._ready = True
 
     # ---------- main operations ----------
 
@@ -158,6 +168,7 @@ class GoogleExpenseBackend:
                 body={"name": filename, "parents": [self._folder_id]},
                 media_body=MediaIoBaseUpload(io.BytesIO(file_bytes), mimetype=mime_type),
                 fields="id, webViewLink",
+                supportsAllDrives=True,
             )
             .execute()
         )
@@ -175,7 +186,7 @@ class GoogleExpenseBackend:
         ]
         self.sheets.spreadsheets().values().append(
             spreadsheetId=self._spreadsheet_id,
-            range=f"{TAB_NAME}!A1",
+            range=f"{self._tab}!A1",
             valueInputOption="RAW",  # keeps dates as ISO text so sorting/filtering is exact
             body={"values": [row]},
         ).execute()
@@ -207,7 +218,7 @@ class GoogleExpenseBackend:
         result = (
             self.sheets.spreadsheets()
             .values()
-            .get(spreadsheetId=self._spreadsheet_id, range=f"{TAB_NAME}!A2:I")
+            .get(spreadsheetId=self._spreadsheet_id, range=f"{self._tab}!A2:I")
             .execute()
         )
 
@@ -228,6 +239,6 @@ class GoogleExpenseBackend:
         return expenses
 
     def download_attachment(self, file_id: str) -> tuple:
-        meta = self.drive.files().get(fileId=file_id, fields="name").execute()
-        content = self.drive.files().get_media(fileId=file_id).execute()
+        meta = self.drive.files().get(fileId=file_id, fields="name", supportsAllDrives=True).execute()
+        content = self.drive.files().get_media(fileId=file_id, supportsAllDrives=True).execute()
         return meta.get("name", f"receipt-{file_id}"), content
