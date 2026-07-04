@@ -54,12 +54,29 @@
     .spinner-note { display: none; margin-top: .75rem; text-align: center; color: #64748b; font-size: .85rem; }
     .footer-link { margin-top: 1.5rem; text-align: center; font-size: .9rem; }
     .footer-link a { text-decoration: none; }
+    .info {
+      background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af;
+      border-radius: 8px; padding: .9rem 1rem; font-size: .9rem; margin-bottom: 1.25rem;
+    }
+    .connect-btn {
+      display: block; margin-top: .75rem; text-align: center;
+      background: #2563eb; color: #fff !important; text-decoration: none;
+      padding: .7rem; border-radius: 8px; font-weight: 600;
+    }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>&#129534; Expense Tracker</h1>
     <p class="sub">Upload a receipt photo or PDF. The details are extracted automatically and saved to your expense sheet with the receipt stored alongside.</p>
+
+    {% if needs_google_connect %}
+      <div class="info">
+        <strong>One step left:</strong> connect your Google Drive so receipts and the
+        expense sheet are saved to your own Google account.
+        <a class="connect-btn" href="/google/auth">Connect Google Drive</a>
+      </div>
+    {% endif %}
 
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
 

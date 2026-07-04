@@ -1,16 +1,13 @@
 """Free storage backend: expenses in a Google Sheet, receipts in a Google Drive folder.
 
-Auth is a Google service account (JSON key in GOOGLE_SERVICE_ACCOUNT_JSON).
+Preferred auth: OAuth as the owner's own Google account (client id/secret +
+refresh token). Files are then created in — and owned by — the user's Drive,
+which avoids the "Service Accounts do not have storage quota" limitation.
+Uses only the narrow drive.file scope: the app can touch just the files it
+creates itself, nothing else in the user's Drive.
 
-Recommended setup (avoids Drive permission/quota limits on personal Gmail):
-  You create an empty Google Sheet and a Drive folder, share both with the
-  service account's client_email as Editor, and provide their IDs as
-  GOOGLE_SHEET_ID and GOOGLE_FOLDER_ID. The app fills them in — it never has to
-  create files in the service account's own Drive.
-
-Fallback (only works on Google Workspace / where the service account may own
-files): if the IDs are not set, the app tries to create the sheet and folder
-itself and share them with SHARE_WITH_EMAIL.
+Legacy auth: a service account (GOOGLE_SERVICE_ACCOUNT_JSON), which only
+works where the service account may own files (Google Workspace).
 """
 
 import io
@@ -19,6 +16,7 @@ import os
 import re
 
 from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials as OAuthCredentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
@@ -27,22 +25,42 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
+# The only scope the OAuth flow asks for: access limited to files this app creates.
+DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file"
+
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+
 HEADER = ["Date", "Vendor", "Category", "Description", "Amount", "GST", "Currency", "Notes", "Receipt"]
 
 
+def oauth_backend(client_id: str, client_secret: str, refresh_token: str) -> "GoogleExpenseBackend":
+    """Backend acting as the owner's own Google account (files land in their Drive)."""
+    creds = OAuthCredentials(
+        None,  # access token is minted automatically from the refresh token
+        refresh_token=refresh_token,
+        token_uri=GOOGLE_TOKEN_URL,
+        client_id=client_id,
+        client_secret=client_secret,
+        scopes=[DRIVE_FILE_SCOPE],
+    )
+    return GoogleExpenseBackend(credentials=creds, use_env_ids=False)
+
+
 class GoogleExpenseBackend:
-    def __init__(self):
-        info = json.loads(os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"])
-        creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
-        self.sheets = build("sheets", "v4", credentials=creds, cache_discovery=False)
-        self.drive = build("drive", "v3", credentials=creds, cache_discovery=False)
-        self.share_with = os.environ.get("SHARE_WITH_EMAIL", "")
+    def __init__(self, credentials=None, use_env_ids=True):
+        if credentials is None:  # legacy service-account path
+            info = json.loads(os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"])
+            credentials = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+        self.sheets = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+        self.drive = build("drive", "v3", credentials=credentials, cache_discovery=False)
+        self.share_with = os.environ.get("SHARE_WITH_EMAIL", "") if use_env_ids else ""
         self.sheet_name = os.environ.get("SHEET_NAME", "Business Expenses")
         self.folder_name = os.environ.get("FOLDER_NAME", "Business Expense Receipts")
 
-        # Preferred: user-created, service-account-shared sheet + folder.
-        self._spreadsheet_id = os.environ.get("GOOGLE_SHEET_ID") or None
-        self._folder_id = os.environ.get("GOOGLE_FOLDER_ID") or None
+        # Service-account mode can point at a user-created, shared sheet + folder.
+        # OAuth mode always finds-or-creates its own (they're owned by the user anyway).
+        self._spreadsheet_id = (os.environ.get("GOOGLE_SHEET_ID") or None) if use_env_ids else None
+        self._folder_id = (os.environ.get("GOOGLE_FOLDER_ID") or None) if use_env_ids else None
 
         self._tab = None       # first tab's title, discovered at setup
         self._grid_id = None   # first tab's numeric id

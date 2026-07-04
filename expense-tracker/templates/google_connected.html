@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Google Drive connected</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#2563eb">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f2f4f7; color: #1a202c;
+      display: flex; justify-content: center; padding: 2rem 1rem; min-height: 100vh;
+    }
+    .card {
+      background: #fff; border-radius: 12px; padding: 2rem;
+      max-width: 520px; width: 100%;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08); height: fit-content;
+    }
+    h1 { font-size: 1.3rem; margin-bottom: .75rem; }
+    p { font-size: .95rem; margin-bottom: 1rem; line-height: 1.5; }
+    ol { margin: 0 0 1rem 1.25rem; font-size: .95rem; line-height: 1.7; }
+    .success {
+      background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534;
+      border-radius: 8px; padding: .75rem 1rem; font-size: .9rem; margin-bottom: 1.25rem;
+    }
+    .token-box {
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+      padding: .75rem; font-family: ui-monospace, Menlo, monospace; font-size: .8rem;
+      word-break: break-all; margin-bottom: .75rem;
+    }
+    button, a.btn {
+      display: block; width: 100%; padding: .8rem; text-align: center;
+      background: #2563eb; color: #fff; border: none; border-radius: 8px;
+      font-size: 1rem; font-weight: 600; cursor: pointer; text-decoration: none;
+      margin-bottom: .75rem;
+    }
+    button.secondary { background: #64748b; }
+    code { background: #f1f5f9; padding: .1rem .35rem; border-radius: 4px; font-size: .85em; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>&#9989; Google Drive connected!</h1>
+    <div class="success">You can upload receipts right now — they'll go to a "Business Expenses" sheet and a receipts folder in your own Google Drive.</div>
+
+    {% if not already_saved %}
+      <p><strong>One last thing to make it permanent:</strong> this app forgets the connection when it restarts (it naps when idle). Save this connection key in Render once and it's remembered forever:</p>
+      <div class="token-box" id="token">{{ refresh_token }}</div>
+      <button onclick="navigator.clipboard.writeText(document.getElementById('token').textContent).then(() => this.textContent = 'Copied!')">Copy connection key</button>
+      <ol>
+        <li>Open <strong>dashboard.render.com</strong> &rarr; your <strong>expense-tracker</strong> service</li>
+        <li>Left menu &rarr; <strong>Environment</strong> &rarr; <strong>Add Environment Variable</strong></li>
+        <li>Key: <code>GOOGLE_REFRESH_TOKEN</code> &nbsp; Value: paste the key above</li>
+        <li><strong>Save</strong> — the app restarts itself and stays connected from then on</li>
+      </ol>
+    {% endif %}
+
+    <a class="btn" href="/">Go upload a receipt &rarr;</a>
+  </div>
+</body>
+</html>
