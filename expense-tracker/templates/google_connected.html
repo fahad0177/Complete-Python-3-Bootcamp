@@ -46,17 +46,14 @@
     <h1>&#9989; Google Drive connected!</h1>
     <div class="success">You can upload receipts right now — they'll go to a "Business Expenses" sheet and a receipts folder in your own Google Drive.</div>
 
-    {% if not already_saved %}
-      <p><strong>One last thing to make it permanent:</strong> this app forgets the connection when it restarts (it naps when idle). Save this connection key in Render once and it's remembered forever:</p>
-      <div class="token-box" id="token">{{ refresh_token }}</div>
-      <button onclick="navigator.clipboard.writeText(document.getElementById('token').textContent).then(() => this.textContent = 'Copied!')">Copy connection key</button>
-      <ol>
-        <li>Open <strong>dashboard.render.com</strong> &rarr; your <strong>expense-tracker</strong> service</li>
-        <li>Left menu &rarr; <strong>Environment</strong> &rarr; <strong>Add Environment Variable</strong></li>
-        <li>Key: <code>GOOGLE_REFRESH_TOKEN</code> &nbsp; Value: paste the key above</li>
-        <li><strong>Save</strong> — the app restarts itself and stays connected from then on</li>
-      </ol>
-    {% endif %}
+    <p><strong>{% if already_saved %}Update the saved connection key so the new connection survives restarts:{% else %}One last thing to make it permanent:{% endif %}</strong> this app forgets the connection when it restarts (it naps when idle). Save this connection key in Render once and it's remembered from then on:</p>
+    <div class="token-box" id="token">{{ refresh_token }}</div>
+    <button onclick="navigator.clipboard.writeText(document.getElementById('token').textContent).then(() => this.textContent = 'Copied!')">Copy connection key</button>
+    <ol>
+      <li>Open <strong>dashboard.render.com</strong> &rarr; your <strong>expense-tracker</strong> service</li>
+      <li>Left menu &rarr; <strong>Environment</strong> &rarr; {% if already_saved %}find <code>GOOGLE_REFRESH_TOKEN</code> and <strong>replace its value</strong> with the key above{% else %}<strong>Add Environment Variable</strong>: key <code>GOOGLE_REFRESH_TOKEN</code>, value = the key above{% endif %}</li>
+      <li><strong>Save</strong> — the app restarts itself and stays connected from then on</li>
+    </ol>
 
     <a class="btn" href="/">Go upload a receipt &rarr;</a>
   </div>

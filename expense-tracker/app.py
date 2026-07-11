@@ -57,7 +57,9 @@ def _google_oauth_configured() -> bool:
 
 
 def _google_refresh_token():
-    return os.environ.get("GOOGLE_REFRESH_TOKEN") or _runtime_google_token
+    # The runtime token (from a fresh in-app reconnect) wins over the env var,
+    # which may hold an older, expired token until the owner updates it.
+    return _runtime_google_token or os.environ.get("GOOGLE_REFRESH_TOKEN")
 
 
 def get_backend():
@@ -237,6 +239,19 @@ def upload():
             expense=expense,
         )
     except Exception as exc:
+        global _backend
+        if "invalid_grant" in str(exc):
+            # Refresh token expired/revoked (e.g. consent screen still in Testing
+            # mode, where tokens die after 7 days). Offer a one-tap reconnect.
+            _backend = None
+            return render_template(
+                "index.html",
+                error="Your Google Drive connection has expired. Tap 'Connect Google "
+                "Drive' below to reconnect — and to stop this recurring, publish the "
+                "app in Google's console (OAuth consent screen → Publish app).",
+                needs_google_connect=True,
+                expense=expense,
+            )
         return render_template(
             "index.html",
             error=f"Extracted the receipt but could not save it to your expense sheet: {exc}",
